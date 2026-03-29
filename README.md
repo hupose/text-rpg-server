@@ -4,20 +4,53 @@
 
 ## 🐳 Docker 一键部署
 
+### 方式一：自动脚本（推荐）
+
 ```bash
 # 克隆仓库
 git clone https://github.com/hupose/text-rpg-server.git
 cd text-rpg-server
 
-# 构建并启动
+# 添加执行权限
+chmod +x build.sh
+
+# 一键构建并启动
+./build.sh
+```
+
+### 方式二：手动部署
+
+```bash
+# 构建镜像（自动匹配当前架构）
 docker build -t text-rpg-server .
+
+# 启动容器
 docker run -d -p 3000:3000 -v $(pwd)/data:/app/data --name text-rpg text-rpg-server
 
 # 检查状态
 curl http://localhost:3000/api/health
 ```
 
-## 📦 手动部署
+### 方式三：跨架构构建
+
+如果在 x86 机器上构建，部署到 ARM 服务器（如树莓派、Orange Pi）：
+
+```bash
+# 启用 buildx
+docker buildx create --use
+
+# 构建 ARM64 镜像
+docker buildx build --platform linux/arm64 -t text-rpg-server --load .
+
+# 导出镜像
+docker save text-rpg-server > text-rpg-server-arm64.tar
+
+# 在 ARM 服务器上加载
+docker load < text-rpg-server-arm64.tar
+docker run -d -p 3000:3000 -v $(pwd)/data:/app/data --name text-rpg text-rpg-server
+```
+
+## 📦 手动部署（无 Docker）
 
 ```bash
 # 安装依赖

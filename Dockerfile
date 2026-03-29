@@ -1,5 +1,5 @@
-# 最精简的 Node.js Alpine 镜像
-FROM node:18-alpine
+# 支持多架构的 Node.js Alpine 镜像
+FROM --platform=$TARGETPLATFORM node:18-alpine
 
 WORKDIR /app
 
