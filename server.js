@@ -250,13 +250,16 @@ io.on('connection', (socket) => {
     // 离线战斗
     socket.on('start-offline-farm', (data) => {
         const { interval } = data || {};
+        console.log(`[WS] ${socket.id} requested start-offline-farm with interval ${interval || 10}s`);
         
         // 设置保存回调（战斗结束后60秒保存一次）
         currentGame.setOfflineFarmSaveCallback(() => {
             saveGameToFile(currentGameId, currentGame);
+            console.log(`[OfflineFarm] Auto-saved for ${currentGameId}`);
         });
         
         const result = currentGame.startOfflineFarm(interval || 10);
+        console.log(`[WS] startOfflineFarm result:`, result.success ? 'success' : result.reason);
         socket.emit('action-result', result);
         
         // 启动成功后立即保存一次初始状态
@@ -266,8 +269,10 @@ io.on('connection', (socket) => {
     });
     
     socket.on('stop-offline-farm', () => {
+        console.log(`[WS] ${socket.id} requested stop-offline-farm`);
         const result = currentGame.stopOfflineFarm();
         if (result.success) {
+            console.log(`[WS] Offline farm stopped for ${currentGameId}`);
             saveGameToFile(currentGameId, currentGame);
             io.to(currentGameId).emit('state-update', currentGame.getState());
         }

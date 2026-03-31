@@ -435,10 +435,21 @@ class BattleSystem {
     
     canStartBattle() {
         if (this.inBattle) return false;
-        if (!this.game.player.isAlive()) return false;
         
-        // 检查死亡状态
-        if (this.game.player.isDead && !this.game.player.canRevive()) {
+        // 检查死亡状态 - 如果死亡，尝试自动复活
+        if (this.game.player.isDead) {
+            if (this.game.player.canRevive()) {
+                // 复活时间已过，自动复活
+                this.game.player.revive();
+                console.log('[Battle] Auto-revived player before battle');
+            } else {
+                // 复活时间未到，无法战斗
+                return false;
+            }
+        }
+        
+        // 检查 HP
+        if (!this.game.player.isAlive()) {
             return false;
         }
         
@@ -986,11 +997,23 @@ class Game {
         }
         
         if (this.offlineFarmTimer) {
-            return { success: false, reason: 'already_farming' };
+            console.warn('[OfflineFarm] Timer already running, clearing old timer');
+            clearInterval(this.offlineFarmTimer);
+            this.offlineFarmTimer = null;
         }
         
+        // 如果死亡，尝试复活
         if (this.player.isDead) {
-            return { success: false, reason: 'player_dead' };
+            if (this.player.canRevive()) {
+                this.player.revive();
+            } else {
+                return { success: false, reason: 'player_dead' };
+            }
+        }
+        
+        // 确保 HP > 0
+        if (!this.player.isAlive()) {
+            return { success: false, reason: 'player_no_hp' };
         }
         
         // 初始化离线战斗统计
@@ -998,9 +1021,11 @@ class Game {
             startTime: Utils.now(),
             battles: 0,
             wins: 0,
+            losses: 0,  // 新增：记录失败次数
             expGained: 0,
             goldGained: 0,
             potionsUsed: 0,
+            revives: 0,  // 新增：记录复活次数
             interval: intervalSeconds,
             lastSaveTime: Utils.now()
         };
@@ -1048,13 +1073,24 @@ class Game {
     
     // 执行一次离线战斗循环
     runOfflineFarmCycle() {
-        if (!this.player || this.player.isDead) {
-            // 玩家死亡，检查是否可以复活
-            if (this.player && this.player.canRevive()) {
+        // 检查死亡状态并尝试复活
+        if (this.player.isDead) {
+            if (this.player.canRevive()) {
+                // 复活时间已过，自动复活
                 this.player.revive();
+                console.log('[OfflineFarm] Auto-revived player');
             } else {
-                return; // 无法战斗
+                // 复活时间未到，跳过本轮
+                const remaining = this.player.getReviveRemaining();
+                console.log(`[OfflineFarm] Player dead, waiting ${Math.ceil(remaining/1000)}s for revive`);
+                return;
             }
+        }
+        
+        // 确保 HP > 0
+        if (!this.player.isAlive()) {
+            console.warn('[OfflineFarm] Player has no HP, skipping');
+            return;
         }
         
         // 自动吃药
@@ -1068,7 +1104,8 @@ class Game {
         // 开始战斗
         const battleResult = this.battleSystem.startBattle();
         if (!battleResult.success) {
-            return; // 无法开始战斗
+            console.warn('[OfflineFarm] Cannot start battle:', battleResult.reason);
+            return;
         }
         
         // 自动打完战斗（同步执行，战斗结束后 inBattle=false）
@@ -1084,7 +1121,9 @@ class Game {
         
         // 更新统计
         this.offlineFarmStats.battles++;
-        if (autoResult.success) {
+        if (this.player.isDead) {
+            this.offlineFarmStats.losses++;
+        } else {
             this.offlineFarmStats.wins++;
             this.offlineFarmStats.expGained += autoResult.expGained || 0;
             this.offlineFarmStats.goldGained += autoResult.goldGained || 0;
