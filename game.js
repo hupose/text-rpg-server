@@ -562,8 +562,8 @@ class BattleSystem {
             }
         }
         
-        // 自动刷怪模式：战斗结束后自动开始下一场
-        if (autoContinue && !this.inBattle && this.game.player.currentHp > 0) {
+        // 自动刷怪模式：战斗结束后自动开始下一场（检查是否死亡）
+        if (autoContinue && !this.inBattle && !this.game.player.isDead && this.game.player.currentHp > 0) {
             const nextBattle = this.game.startBattle();
             if (nextBattle.success) {
                 this.log(`🔄 自动继续下一场战斗...`);
@@ -937,6 +937,9 @@ class Game {
             this.battleSystem.battleCount = data.battleSystem.battleCount || 0;
             this.battleSystem.winCount = data.battleSystem.winCount || 0;
             this.battleSystem.loseCount = data.battleSystem.loseCount || 0;
+            // 强制清理战斗状态（防止加载战斗中的存档）
+            this.battleSystem.inBattle = false;
+            this.battleSystem.currentEnemy = null;
         }
         
         this.notifyStateChange();
@@ -1068,10 +1071,18 @@ class Game {
             return; // 无法开始战斗
         }
         
-        // 自动打完战斗
+        // 自动打完战斗（同步执行，战斗结束后 inBattle=false）
         const autoResult = this.battleSystem.autoBattle();
         
-        // 更新统计（战斗完全结束后才更新）
+        // 确保战斗完全结束后才更新统计和保存
+        if (this.battleSystem.inBattle) {
+            // 异常：战斗未正常结束，强制清理
+            console.warn('[OfflineFarm] Battle did not end properly, forcing cleanup');
+            this.battleSystem.inBattle = false;
+            this.battleSystem.currentEnemy = null;
+        }
+        
+        // 更新统计
         this.offlineFarmStats.battles++;
         if (autoResult.success) {
             this.offlineFarmStats.wins++;
@@ -1079,13 +1090,12 @@ class Game {
             this.offlineFarmStats.goldGained += autoResult.goldGained || 0;
         }
         
-        // 战斗结束后才保存（避免保存中间状态）
-        // 每60秒保存一次，减少IO频率
+        // 战斗结束后才保存（确保不在战斗中）
         const now = Utils.now();
         if (now - this.offlineFarmStats.lastSaveTime >= 60000) {
             this.offlineFarmStats.lastSaveTime = now;
             // 触发保存回调（由 server.js 处理文件写入）
-            if (this.onOfflineFarmSave) {
+            if (this.onOfflineFarmSave && !this.battleSystem.inBattle) {
                 this.onOfflineFarmSave();
             }
         }
